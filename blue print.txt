@@ -1,0 +1,98 @@
+flow 1: application start
+	=> Run JOB QUEUING LOGIC
+
+	
+flow 2: Job Flow
+	Jobs apis:
+	i. create job api
+	ii. fetch jobs api
+	iii. abort job api
+	iv. force start job api
+	v. set job priority api
+	
+create job api flow:
+	- create job and set status 'create'
+	- call the function to check worker availability
+	- Queue new job
+	- fork new worker
+abort job api flow:
+	- get the worker id from db
+	- through worker instance call worker[index].process.kill(worker[index].process.pid)
+	- set the job status to aborted
+
+
+=======================================================
+worker management:
+worker lifecycle:
+	1. worker get forked
+	2. cluster on('online') event- perform following steps
+		i. get the job within status 'queue'
+		ii. update the job status to 'run' and worker id where it is processing
+		iii. when job gets processed update the status to 'success'. if it takes more time than timeout then abort the job.
+		iv. kill the current process by process.
+	3. cluster on('exit') event - perform following steps
+		i. if the worker.exitedAfterDisconnect === false 
+			then update the job status to halt
+		ii. Run JOB QUEUING LOGIC
+		iii. if job found 
+			then fork new worker and repeat point 2
+
+=======================================================
+WORKER FORK LOGIC:
+
+=======================================================
+JOB QUEUING LOGIC:
+
+check for jobs in status "run" if "isAppStarting" param is true (let these jobs be runJobs) - jql1
+	if  jobs found then generate workers
+		process runJobs 
+	else 
+		search for jobs with forceStart = true(let these jobs be forceStartJobs) - jql2
+		if forceStartJobs found then
+			process forceStartJobs
+		else 
+			search for jobs with totalHalts = 1 (let these jobs be haltedJobs) with limit equal to cpu count - jql3
+			if haltedJobs found then
+				process haltedJobs 
+			else 
+				search for jobs with maximum priority with limit equal to cpu count(priorityJobs) - jql4
+				if priorityJobs found then
+					process priorityJobs
+				else 
+					then process regular jobs - jql5
+
+
+jql 1 = jobStatus: 'run'
+
+so the job queuing is the problem
+where should we queue the job
+lets set the status of job to queue and read that status inside the worker to process the job
+the problem: what if multiple jobs get queued
+
+==========================================================
+job priority logic:
+1. jobs in status RUN (only when the app is starting)
+2. jobs in status forStart 
+3. jobs which are halted once
+4. jobs with priority between 2-10(priority descending)
+5. jobs with priority 1 i.e, regular jobs
+
+=========================================================
+jobs can be queued at following points:
+1. when a job is created
+2. when a job is finished processing
+3. when a jobs priority changed
+
+point 1:
+- check the availability of worker
+- if worker available set a job to queue and fork a worker
+edge case 1: what if a worker finished at the same time?
+solution: workers get the queued job on the basis of priority and create date
+
+point 2:
+- get the queued job accorting to the solution of edge case 1 of point 1 above.
+
+point 3:
+- there will be not problem in processing jobs as the queued jobs only process by implementing the priority logic
+
+
